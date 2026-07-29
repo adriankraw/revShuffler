@@ -11,20 +11,6 @@ import "core:strings"
 import "core:math/rand"
 import "core:encoding/json"
 
-// TODO: 
-// Steuerung
-// Scrollrad; Box um Bereich ziehen
-
-// Information:
-// Farbpalette anzeigen
-// Wir oft schon gezeichnet
-
-// Filter:
-// Schwarz-Weis
-
-// Timer:
-// Einstellen
-// Starten; Pausieren; Stoppen
 
 basePath := ""
 
@@ -74,6 +60,24 @@ Resource:: struct {
 	path:		cstring,
 	drawnCount:	int,
 	shownCount:	int
+}
+
+read_stateFile::proc(basePath:string, dyn_arr:^[dynamic]Resource ){
+	data, err := os.read_entire_file_from_path( strings.concatenate({basePath,".revShuffler"}), context.allocator)
+	if err != nil{
+		fmt.eprintfln("Failed to read directory")
+	}
+	defer delete(data)
+	
+	json_err := json.unmarshal(data, dyn_arr)
+	if json_err != nil{
+		fmt.eprintfln("Failed to parse json")
+	}
+	fmt.eprintln(dyn_arr)
+
+	read_directory(basePath, dyn_arr)
+
+	fmt.printfln("length %d", len(dyn_arr))
 }
 
 read_directory:: proc( basePath:string, dyn_arr: ^[dynamic]Resource){
@@ -199,22 +203,6 @@ main :: proc() {
 	dyn_arr:[dynamic]Resource = {}
 	defer delete(dyn_arr)
 
-	data, err := os.read_entire_file_from_path( strings.concatenate({basePath,".revShuffler"}), context.allocator)
-	if err != nil{
-		fmt.eprintfln("Failed to read directory")
-	}
-	defer delete(data)
-	
-	json_err := json.unmarshal(data, &dyn_arr)
-	if json_err != nil{
-		fmt.eprintfln("Failed to parse json")
-	}
-	fmt.eprintln(dyn_arr)
-
-	read_directory(basePath, &dyn_arr)
-
-	fmt.printfln("length %d", len(dyn_arr))
-
 	mouseWheelMovement :f32 = 1
 
 	imageWidth	:f32
@@ -300,12 +288,18 @@ main :: proc() {
 			case .WINDOW_CLOSE_REQUESTED:
 				break main_loop
 			case .KEY_DOWN:
-				if(sdl.TextInputActive(window) == true) {continue}
-				if e.key.raw & sdl.K_A != sdl.K_Z{
-					ui.input_key_down(microUI_Context, ui.Key(e.key.key))
+				if(sdl.TextInputActive(window) == true) {
+					switch e.key.key{
+					case sdl.K_BACKSPACE:
+						ui.input_key_down(microUI_Context, ui.Key.BACKSPACE)
+					}
+					continue;
 				}
+				ui.input_key_down(microUI_Context, ui.Key(e.key.raw))
 			case .KEY_UP:
-				if(sdl.TextInputActive(window) == true) {continue}
+				if(sdl.TextInputActive(window) == true) {
+					continue
+				}
 				ui.input_key_up(microUI_Context, ui.Key(e.key.key))
 
 				switch e.key.key {
@@ -385,11 +379,8 @@ main :: proc() {
 			}
 			ui.end_window(microUI_Context)
 		}
-		if (ui.begin_window(microUI_Context, "Timer", {0,100,100,100}, {.NO_SCROLL})){
+		if (ui.begin_window(microUI_Context, "Timer", {0,100,100,150}, {.NO_SCROLL})){
 			if res:=ui.textbox(microUI_Context, testbuf[:], &testbuflength); res != {}{
-				for r in res{
-					fmt.print(r)
-				}
 				ui.set_focus(microUI_Context, microUI_Context.last_id)
 			}
 
@@ -407,7 +398,7 @@ main :: proc() {
 		sdl.SetRenderDrawColorFloat(renderer, color.r, color.g, color.b, color.a)
 		sdl.RenderClear(renderer)
 
-		if(lastImageIndex!=imageIndex){
+		if(len(dyn_arr)>0 && lastImageIndex!=imageIndex){
 			loadStart := sdl.GetTicksNS()
 			imageSur:^sdl.Surface = sdl_image.Load(dyn_arr[imageIndex].path)
 			if(imageSur == nil){
