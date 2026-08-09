@@ -1,5 +1,6 @@
-package sdl3_example
+package revShuffler
 
+import "core:sort"
 import "core:container/queue"
 import sdl "vendor:sdl3"
 import sdl_image "vendor:sdl3/image"
@@ -18,14 +19,14 @@ state := struct {
 	ui_ctx: ui.Context,
 	bg: ui.Color,
 	timerRunning:bool,
-	b_hour: i16,
-	b_minute: i8,
-	b_seconds: i8,
-	b_nanoseconds: u64,
-	hour: i16,
-	minute: i8,
-	seconds: i8,
-	nanoseconds: u64,
+	b_hour: f32,
+	b_minute: f32,
+	b_seconds: f32,
+	b_nanoseconds: f32,
+	hour: f32,
+	minute: f32,
+	seconds: f32,
+	nanoseconds: f32,
 	atlas_texture: ^sdl.Texture,
 }{
 	bg = {90,95,200,255},
@@ -59,7 +60,8 @@ set_driver_by_priority :: proc(priority_list: []cstring) -> (driver: cstring) {
 Resource:: struct {
 	path:		cstring,
 	drawnCount:	int,
-	shownCount:	int
+	shownCount:	int,
+	usable:		bool
 }
 
 read_stateFile::proc(basePath:string, dyn_arr:^[dynamic]Resource ){
@@ -119,10 +121,18 @@ nextImage:: proc(imageIndex:^int, length:int) -> (int){
 }
 
 dialogFileCallback:: proc "c" (userdata: rawptr, filelist: [^]cstring, filter: i32){
-	basePath = string(filelist[0])
 	context = runtime.default_context();
+	basePath = strings.clone_from_cstring(filelist[0], context.allocator);
 	read_directory(basePath, cast(^[dynamic]Resource)userdata)
 	sdl.Log(filelist[0])
+}
+
+mysort:: proc(dyn_arr:^[dynamic]Resource){
+	sortfactor := proc(a:Resource, b:Resource) -> int
+	{ 
+		return a.shownCount - b.shownCount
+	}
+	sort.quick_sort_proc(dyn_arr[:], sortfactor)
 }
 
 main :: proc() {
@@ -184,7 +194,7 @@ main :: proc() {
 	vsync_enabled   := true
 	fps_cap_enabled := true
 	fps_target      := 15
-	fps: f64
+	fps		: f64
 	showDebug	:= false
 
 	color: sdl.FColor = {0.05,0.05,0.05,255}
@@ -210,8 +220,8 @@ main :: proc() {
 	imageAspect	:f32
 	lastImageIndex	:int = -1
 	imageIndex	:int = 0
-	imageTex:^sdl.Texture
-	resRect: sdl.FRect = {
+	imageTex	:^sdl.Texture
+	resRect		: sdl.FRect = {
 		x=0,
 		y=0,
 		w=0,
@@ -298,6 +308,12 @@ main :: proc() {
 				ui.input_key_down(microUI_Context, ui.Key(e.key.raw))
 			case .KEY_UP:
 				if(sdl.TextInputActive(window) == true) {
+					switch e.key.key{
+					case sdl.K_ESCAPE:
+						if sdl.StopTextInput(window) == false{
+						}
+						ui.set_focus(microUI_Context, 0)
+					}
 					continue
 				}
 				ui.input_key_up(microUI_Context, ui.Key(e.key.key))
@@ -358,7 +374,9 @@ main :: proc() {
 			case .MOUSE_WHEEL:
 				mouseWheelMovement += (e.wheel.y/50.0)
 			case .TEXT_INPUT:
-				ui.input_text(microUI_Context, strings.clone_from_cstring(e.text.text))
+				text := strings.clone_from_cstring(e.text.text)
+				if(text[0]<48 || text[0]>58) {continue}
+				ui.input_text(microUI_Context, text)
 			}
 		}
 
@@ -372,21 +390,32 @@ main :: proc() {
 				sdl.ShowOpenFolderDialog(dialogFileCallback, &dyn_arr, window, strings.clone_to_cstring(basePath), false)
 			}
 			if ui.button(microUI_Context, "Save", opt = { .NO_SCROLL, .NO_RESIZE }) == {.SUBMIT}{
+				mysort(&dyn_arr)
 				unjson_data, unjson_err := json.marshal( dyn_arr , { 
 					pretty = true,
 				})
-				err := os.write_entire_file_from_string ( strings.concatenate({basePath,".revShuffler"}), string(unjson_data))
+				_path := strings.concatenate({basePath,"/.revShuffler"})
+				fmt.println(_path)
+				err := os.write_entire_file_from_string ( _path, string(unjson_data))
+				if err != nil{
+					fmt.println(err)
+				}
 			}
 			ui.end_window(microUI_Context)
 		}
-		if (ui.begin_window(microUI_Context, "Timer", {0,100,100,150}, {.NO_SCROLL})){
-			if res:=ui.textbox(microUI_Context, testbuf[:], &testbuflength); res != {}{
-				ui.set_focus(microUI_Context, microUI_Context.last_id)
+		if (ui.begin_window(microUI_Context, "Timer", {0,100,110,150}, {.NO_SCROLL, .ALIGN_CENTER, .AUTO_SIZE})){
+			ui.layout_row(microUI_Context, {30,30,30}, 0)
+			if res:=ui.number(microUI_Context, &state.hour, 1, "%02.0f"); res != {}{
+				state.b_hour = state.hour
 			}
-
-			ui.text(microUI_Context, fmt.tprintf("%02d : %02d : %02d",state.hour,state.minute,state.seconds))
-
-			if ui.button(microUI_Context, "Start/Stop", opt = { .NO_SCROLL, .NO_RESIZE }) == {.SUBMIT}{
+			if res:=ui.number(microUI_Context, &state.minute, 1, "%02.0f"); res != {}{
+				state.b_minute = state.minute
+			}
+			if res:=ui.number(microUI_Context, &state.seconds, 1, "%02.0f"); res != {}{
+				state.b_seconds = state.seconds
+			}
+			ui.layout_row(microUI_Context, {90}, 0)
+			if ui.button(microUI_Context, state.timerRunning?"Stop":"Start", opt = { .NO_SCROLL, .NO_RESIZE }) == {.SUBMIT}{
 				state.timerRunning = !state.timerRunning
 			}
 			ui.end_window(microUI_Context)
@@ -409,11 +438,13 @@ main :: proc() {
 			imageWidth	= f32(imageSur.w)
 			imageHeight	= f32(imageSur.h)
 			imageAspect	= imageWidth/imageHeight
+			sdl.DestroyTexture(imageTex)
 			imageTex	= sdl.CreateTextureFromSurface(renderer, imageSur)
 			sdl.DestroySurface(imageSur)
 
 			//update the count for our saveFile
 			dyn_arr[imageIndex].shownCount +=1
+			fmt.println("%s: %i",dyn_arr[imageIndex].path ,dyn_arr[imageIndex].shownCount)
 
 			//update times
 			loadEnd := sdl.GetTicksNS()
@@ -518,7 +549,7 @@ main :: proc() {
 		delta = frame_end - frame_start
 		if(!state.timerRunning) { continue }
 
-		state.nanoseconds += delta
+		state.nanoseconds += f32(delta)
 		if(state.nanoseconds >= 1000000000){
 			if(state.seconds - 1 < 0){
 				if(state.minute-1 < 0){
