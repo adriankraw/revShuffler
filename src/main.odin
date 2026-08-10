@@ -27,6 +27,9 @@ state := struct {
 	minute: f32,
 	seconds: f32,
 	nanoseconds: f32,
+	shownIndex: int,
+	lastShownIndex: int,
+	lastShownAmount: int,
 	atlas_texture: ^sdl.Texture,
 }{
 	bg = {90,95,200,255},
