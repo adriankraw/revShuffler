@@ -19,6 +19,7 @@ state := struct {
 	ui_ctx: ui.Context,
 	bg: ui.Color,
 	timerRunning:bool,
+	forceNext:bool,
 	b_hour: f32,
 	b_minute: f32,
 	b_seconds: f32,
@@ -195,7 +196,6 @@ main :: proc() {
 	screenHeight	:f32 = 480
 	refresh_rate    := display_mode.refresh_rate
 	vsync_enabled   := true
-	fps_cap_enabled := true
 	fps_target      := 15
 	fps		: f64
 	showDebug	:= false
@@ -333,16 +333,8 @@ main :: proc() {
 					}
 				case sdl.K_D:
 					showDebug = !showDebug
-				case sdl.K_M:
-					test:sdl.PropertiesID = 0
-					sdl.ShowFileDialogWithProperties(sdl.FileDialogType.OPENFOLDER, nil, nil, test)
 				case sdl.K_ESCAPE:
 					break main_loop
-				case sdl.K_V:
-					vsync_enabled = !vsync_enabled
-					sdl.SetRenderVSync(renderer, vsync_enabled ? 1 : sdl.RENDERER_VSYNC_DISABLED)
-				case sdl.K_F:
-					fps_cap_enabled = !fps_cap_enabled
 				}
 			case .MOUSE_BUTTON_UP:
 				switch e.button.button {
@@ -406,21 +398,29 @@ main :: proc() {
 			}
 			ui.end_window(microUI_Context)
 		}
-		if (ui.begin_window(microUI_Context, "Timer", {0,100,110,150}, {.NO_SCROLL, .ALIGN_CENTER, .AUTO_SIZE})){
+		if (ui.begin_window(microUI_Context, "Timer", {0,100,110,150}, {.NO_SCROLL, .NO_RESIZE})){
+			body := ui.get_current_container(microUI_Context).body
 			ui.layout_row(microUI_Context, {30,30,30}, 0)
-			if res:=ui.number(microUI_Context, &state.hour, 1, "%02.0f"); res != {}{
+			if res:=ui.number(microUI_Context, &state.hour, 0.1, "%02.0f"); res != {}{
 				state.b_hour = state.hour
 			}
-			if res:=ui.number(microUI_Context, &state.minute, 1, "%02.0f"); res != {}{
+			if res:=ui.number(microUI_Context, &state.minute, 0.1, "%02.0f"); res != {}{
 				state.b_minute = state.minute
 			}
-			if res:=ui.number(microUI_Context, &state.seconds, 1, "%02.0f"); res != {}{
+			if res:=ui.number(microUI_Context, &state.seconds, 0.1, "%02.0f"); res != {}{
 				state.b_seconds = state.seconds
 			}
-			ui.layout_row(microUI_Context, {90}, 0)
+			
+			ui.layout_set_next(microUI_Context, {(body.w - 90 -microUI_Context.style.padding -microUI_Context.style.spacing)/2,30,90,20}, true)
 			if ui.button(microUI_Context, state.timerRunning?"Stop":"Start", opt = { .NO_SCROLL, .NO_RESIZE }) == {.SUBMIT}{
 				state.timerRunning = !state.timerRunning
 			}
+
+			ui.layout_set_next(microUI_Context, {(body.w - 90 -microUI_Context.style.padding -microUI_Context.style.spacing)/2,90,90,20}, true)
+			if ui.button(microUI_Context, "next", opt = { .NO_SCROLL, .NO_RESIZE}) == {.SUBMIT}{
+				state.forceNext = true
+			}
+
 			ui.end_window(microUI_Context)
 		}
 
@@ -492,7 +492,6 @@ main :: proc() {
 			sdl.RenderDebugText(renderer, 10, row(&r, 10), "hellope world!")
 			sdl.RenderDebugText(renderer, 10, row(&r, 10), fmt.ctprintf("%-16s%v", "VSync Enabled:", vsync_enabled))
 			sdl.RenderDebugText(renderer, 10, row(&r, 10), fmt.ctprintf("%-16s%v", "Refresh Rate:", refresh_rate))
-			sdl.RenderDebugText(renderer, 10, row(&r, 10), fmt.ctprintf("%-16s%v", "FPS Capped:", fps_cap_enabled))
 			sdl.RenderDebugText(renderer, 10, row(&r, 10), fmt.ctprintf("%-16s%i", "FPS Target:", fps_target))
 			sdl.RenderDebugText(renderer, 10, row(&r, 10), fmt.ctprintf("%-16s%.2f", "FPS Current:", fps))
 			sdl.RenderDebugText(renderer, 10, row(&r, 20), "Found Drivers:")
@@ -541,10 +540,16 @@ main :: proc() {
 
 		// Cap fps if enabled
 		npf_target := u64(1000000000 / fps_target) // nanoseconds per frame target
-		if fps_cap_enabled && (delta) < npf_target {
+		if delta < npf_target {
 			sleep_time := npf_target - delta
 			sdl.DelayPrecise(sleep_time)
 			frame_end = sdl.GetTicksNS() // Update frame_end counter to include sleep_time for fps calculation
+		}
+
+		if state.forceNext{
+			queue.push_back(&imageQueue, nextImage(&imageIndex, len(dyn_arr)))
+			state.forceNext = false
+			continue
 		}
 
 		// update fps tracker
