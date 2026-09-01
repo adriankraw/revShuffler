@@ -1,7 +1,6 @@
 package revShuffler
 
 import "core:sort"
-import "core:container/queue"
 import sdl "vendor:sdl3"
 import sdl_image "vendor:sdl3/image"
 import ui "vendor:microui"
@@ -110,7 +109,7 @@ read_directory:: proc( basePath:string, dyn_arr: ^[dynamic]Resource){
 }
 
 nextImage:: proc(imageIndex:^int, length:int) -> (int){
-	stepBy := int(rand.int32_range(1,25))
+	stepBy := int(rand.int_range(1,length/10))
 	if(imageIndex^+stepBy<length){
 		imageIndex^+=stepBy
 	}else
@@ -230,8 +229,6 @@ main :: proc() {
 		w=0,
 		h=0
 	}
-	imageQueue: queue.Queue(int)
-	queue.init(&imageQueue)
 
 	//Timer
 	state.b_hour		= 0
@@ -322,15 +319,6 @@ main :: proc() {
 				ui.input_key_up(microUI_Context, ui.Key(e.key.key))
 
 				switch e.key.key {
-				case sdl.K_RIGHT:
-					queue.push_back(&imageQueue, nextImage(&imageIndex, len(dyn_arr)))
-				case sdl.K_LEFT:
-					if(queue.len(imageQueue)>0){
-						back := queue.pop_back(&imageQueue)
-						if(imageIndex-back>=0){
-							imageIndex-=back
-						}
-					}
 				case sdl.K_D:
 					showDebug = !showDebug
 				case sdl.K_ESCAPE:
@@ -390,7 +378,6 @@ main :: proc() {
 					pretty = true,
 				})
 				_path := strings.concatenate({basePath,"/.revShuffler"})
-				fmt.println(_path)
 				err := os.write_entire_file_from_string ( _path, string(unjson_data))
 				if err != nil{
 					fmt.println(err)
@@ -431,6 +418,8 @@ main :: proc() {
 		sdl.RenderClear(renderer)
 
 		if(len(dyn_arr)>0 && lastImageIndex!=imageIndex){
+
+
 			loadStart := sdl.GetTicksNS()
 			imageSur:^sdl.Surface = sdl_image.Load(dyn_arr[imageIndex].path)
 			if(imageSur == nil){
@@ -447,7 +436,6 @@ main :: proc() {
 
 			//update the count for our saveFile
 			dyn_arr[imageIndex].shownCount +=1
-			fmt.println("%s: %i",dyn_arr[imageIndex].path ,dyn_arr[imageIndex].shownCount)
 
 			//update times
 			loadEnd := sdl.GetTicksNS()
@@ -547,7 +535,7 @@ main :: proc() {
 		}
 
 		if state.forceNext{
-			queue.push_back(&imageQueue, nextImage(&imageIndex, len(dyn_arr)))
+			nextImage(&imageIndex, len(dyn_arr))
 			state.forceNext = false
 			continue
 		}
@@ -562,7 +550,8 @@ main :: proc() {
 			if(state.seconds - 1 < 0){
 				if(state.minute-1 < 0){
 					if(state.hour-1 < 0){
-						queue.push_back(&imageQueue, nextImage(&imageIndex, len(dyn_arr)))
+						dyn_arr[imageIndex].drawnCount+=1
+						nextImage(&imageIndex, len(dyn_arr))
 					}else{
 						state.hour   -=  1
 						state.minute += 60
