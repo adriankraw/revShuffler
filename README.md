@@ -11,6 +11,13 @@ I can only assume whether you have actually drawn that image.
 
  **Open the app -> select a folder -> set a Timer -> draw -> save your progress -> come back tomorrow.**
 
+## Building
+As I am currently using this app on my IOS. This should work
+```sh
+brew install sdl3
+Odin build ./src
+./src.bin
+```
 ## `.revShuffler` files
 
 The `.revShuffler` file acts as the local database for a folder.
